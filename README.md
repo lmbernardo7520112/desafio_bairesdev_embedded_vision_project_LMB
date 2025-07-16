@@ -1,0 +1,2 @@
+# desafio_bairesdev_embedded_vision_project_LMB
+desafio_bairesdev_embedded_vision_project_LMB
