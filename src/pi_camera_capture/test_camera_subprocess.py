@@ -5,7 +5,7 @@ import os
 usuario_pi = "lmbernardo"
 ip_pi = "192.168.1.195"
 caminho_imagem_remoto = "/home/lmbernardo/captura_autodetectada.jpg"
-caminho_imagem_local = os.path.expanduser("~/captura_autodetectada.jpg")
+caminho_imagem_local = os.path.expanduser("~/captura_autodetectada.jpg") # type: ignore
 
 # 1. Executa o script remoto que detecta a câmera e captura a imagem
 print("📸 Executando captura de imagem na Raspberry Pi...")
