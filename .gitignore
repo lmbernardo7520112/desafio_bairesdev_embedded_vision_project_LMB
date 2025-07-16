@@ -1,0 +1,13 @@
+# .gitignore
+__pycache__/
+*.pyc
+.vscode/
+*.jpg
+*.png
+*.log
+*.zip
+*.mp4
+*.avi
+env/
+.venv/
+.embedded_vision_project_notebook_LMB/
