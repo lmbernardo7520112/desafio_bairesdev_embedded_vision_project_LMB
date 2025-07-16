@@ -1,0 +1,3 @@
+[submodule "pico_inference_project/tflm"]
+	path = pico_inference_project/tflm
+	url = https://github.com/tensorflow/tflite-micro.git
