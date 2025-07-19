@@ -3,8 +3,8 @@
 #include "hardware/uart.h"
 #include "hardware/i2c.h"
 
-#include "lib/ssd1306"
-#include "include/inference.h"
+#include "ssd1306.h"
+#include "inference.h"
 #include "pico/platform.h"
 
 // Define os pinos padrão da BitDogLab para I2C
