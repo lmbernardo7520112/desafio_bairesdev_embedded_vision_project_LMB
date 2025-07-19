@@ -1,5 +1,6 @@
 #include "ssd1306.h"
 #include "pico/stdlib.h"
+#include "pico/platform.h"
 #include <string.h>
 
 static uint8_t buffer[SSD1306_WIDTH * SSD1306_HEIGHT / 8];

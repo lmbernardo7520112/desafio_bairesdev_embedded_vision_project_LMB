@@ -5,6 +5,7 @@
 
 #include "lib/ssd1306"
 #include "include/inference.h"
+#include "pico/platform.h"
 
 // Define os pinos padrão da BitDogLab para I2C
 #define I2C_SDA_PIN 4
