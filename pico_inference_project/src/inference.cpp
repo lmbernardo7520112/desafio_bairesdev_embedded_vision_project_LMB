@@ -1,5 +1,6 @@
 #include "inference.h"
 #include "lib/ssd1306.h"
+#include "pico/platform.h"
 #include "hardware/uart.h"
 #include "model_data.cc"
 
