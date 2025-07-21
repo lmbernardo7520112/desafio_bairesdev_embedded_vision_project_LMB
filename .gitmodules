@@ -1,0 +1,6 @@
+[submodule "pico_inference_project/external/pico-tflmicro"]
+	path = pico_inference_project/external/pico-tflmicro
+	url = https://github.com/raspberrypi/pico-tflmicro.git
+[submodule "pico_inference_project/lib/pico-ssd1306"]
+	path = pico_inference_project/lib/pico-ssd1306
+	url = https://github.com/daschr/pico-ssd1306.git
