@@ -1,5 +1,5 @@
 # ============================================================
-# VERSÃO OTIMIZADA - USANDO TOOLCHAIN AUTOMÁTICO DO PICO SDK
+# VERSÃO AJUSTADA PARA USO COM SUBMÓDULO pico-tflmicro
 # ============================================================
 
 message(STATUS "🧪 CMakeLists.txt carregado!")
@@ -8,30 +8,47 @@ cmake_minimum_required(VERSION 3.16)
 
 # ESSENCIAL: Desativa malloc.c da SDK
 set(PICO_NO_MALLOC 1)
-
-# ============================================================
-# CONFIGURAÇÃO DE TOOLCHAIN - DEIXE O PICO SDK GERENCIAR
-# ============================================================
-# REMOVIDO: CMAKE_TRY_COMPILE_TARGET_TYPE (deixe o SDK configurar)
-# REMOVIDO: Flags redundantes de arquitetura
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
 include(external/pico-tflmicro/pico_sdk_import.cmake)
 
 project(pico_inference_project C CXX ASM)
 
-# O Pico SDK já configura automaticamente:
-# - CMAKE_SYSTEM_PROCESSOR
-# - Flags de arquitetura (-mcpu=cortex-m0plus -mthumb)
-# - Toolchain paths (se arm-none-eabi-gcc estiver no PATH)
+set(CMAKE_SYSTEM_PROCESSOR cortex-m0plus)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mcpu=cortex-m0plus -mthumb")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mcpu=cortex-m0plus -mthumb")
+set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -mcpu=cortex-m0plus -mthumb")
+
+# Garante que TODAS as bibliotecas e subdiretórios (inclusive pico-tflmicro) usem a arquitetura correta
+add_compile_options(-mcpu=cortex-m0plus -mthumb)
+add_link_options(-mcpu=cortex-m0plus -mthumb)
 
 pico_sdk_init()
 
-message(STATUS "🚀 Usando configurações automáticas do Pico SDK")
+# ============================================================
+# CONFIGURAÇÃO CORRETA DO BOOT STAGE 2
+# ============================================================
+# REMOVIDO: set(PICO_BOOT_STAGE2_BINARY ${CMAKE_CURRENT_LIST_DIR}/boot_stage2.bin)
+# 
+# O Pico SDK automaticamente seleciona o boot stage 2 correto baseado no:
+# - PICO_BOARD (definido como "pico" por padrão)
+# - Flash chip detectado/configurado
+# 
+# Para W25Q080 (seu caso), use uma das opções abaixo:
+
+# OPÇÃO 1: Deixar automático (RECOMENDADO)
+# O SDK escolhe automaticamente baseado no board
+
+# OPÇÃO 2: Especificar explicitamente o tipo de flash
+# set(PICO_BOOT_STAGE2_CHOOSE_W25Q080 1)
+
+# OPÇÃO 3: Para casos específicos, definir diretamente
+# set(PICO_DEFAULT_BOOT_STAGE2_FILE ${PICO_SDK_PATH}/src/rp2_common/boot_stage2/boot2_w25q080.S)
+
+# Para seu projeto, OPÇÃO 1 (automático) deve funcionar perfeitamente
+message(STATUS "🚀 Usando boot stage 2 automático do Pico SDK")
 
 # ============================================================
-# CONFIGURAÇÃO CORRETA DO BOOT STAGE 2 (AUTOMÁTICO)
-# ============================================================
-# O SDK escolhe automaticamente baseado no PICO_BOARD="pico"
 
 # Desativa testes do pico-tflmicro se não forem usados
 set(PICO_TFLMICRO_ENABLE_TESTS OFF CACHE BOOL "Disable tests" FORCE)
@@ -53,7 +70,7 @@ add_executable(pico_inference_project
 # Includes necessários para o TFLM + seu projeto
 target_include_directories(pico_inference_project PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/include
-    ${CMAKE_CURRENT_LIST_DIR}/src
+    ${CMAKE_CURRENT_LIST_DIR}/src  # <-- ADICIONADO PARA image_provider.h
     ${CMAKE_CURRENT_LIST_DIR}/external/pico-tflmicro/src
 )
 
@@ -78,7 +95,7 @@ target_compile_definitions(pico_inference_project PRIVATE
     ARM_MATH_CM0PLUS
 )
 
-# Otimizações de tamanho (sem flags redundantes de arquitetura)
+# Otimizações de tamanho
 target_compile_options(pico_inference_project PRIVATE
     -Os
     -flto
@@ -87,6 +104,8 @@ target_compile_options(pico_inference_project PRIVATE
     -fno-exceptions
     -ffunction-sections
     -fdata-sections
+    -mthumb
+    -mcpu=cortex-m0plus
 )
 
 target_link_options(pico_inference_project PRIVATE
@@ -94,6 +113,8 @@ target_link_options(pico_inference_project PRIVATE
     -Wl,--gc-sections
     -Wl,--wrap=malloc
     -Wl,--wrap=free
+    -mcpu=cortex-m0plus
+    -mthumb
 )
 
 # Configurações específicas da Raspberry Pi Pico
@@ -101,3 +122,5 @@ pico_enable_stdio_uart(pico_inference_project 1)
 pico_enable_stdio_usb(pico_inference_project 0)
 pico_set_binary_type(pico_inference_project pico_sdk_default)
 pico_add_extra_outputs(pico_inference_project)
+
+#add_custom_target(all DEPENDS pico_inference_project)

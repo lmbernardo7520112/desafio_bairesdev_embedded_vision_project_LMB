@@ -1,5 +1,6 @@
-add_library(ssd1306
+add_library(ssd1306 STATIC
     ssd1306.c
+    ssd1306.h
 )
 
 target_include_directories(ssd1306 PUBLIC
