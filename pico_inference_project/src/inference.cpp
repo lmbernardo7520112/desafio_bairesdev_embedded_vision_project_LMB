@@ -15,13 +15,14 @@
 #include <algorithm>
 #include <stdarg.h>
 #include "model_settings.h"
+#include "model_data.h"
 
 // Instanciação explícita do template para evitar erro de link
 // template class tflite::MicroMutableOpResolver<10>;
 
 // Declarações externas (definidas em model_data.cc)
-extern const unsigned char model_data[];
-extern const unsigned int model_data_len;
+// extern const unsigned char model_data[];
+// extern const unsigned int model_data_len;
 
 #define TENSOR_ARENA_SIZE (20 * 1024)
 uint8_t tensor_arena[TENSOR_ARENA_SIZE];

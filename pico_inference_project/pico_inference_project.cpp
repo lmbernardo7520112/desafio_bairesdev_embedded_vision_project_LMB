@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include "ssd1306.h"
-#include "inference.h"
+#include "src/inference.h"
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
 #include "hardware/i2c.h"

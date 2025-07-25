@@ -1,74 +1,72 @@
 # ============================================================
-# VERSÃO OTIMIZADA - USANDO TOOLCHAIN AUTOMÁTICO DO PICO SDK
+# CMakeLists.txt - VERSÃO DE DIAGNÓSTICO (OTIMIZAÇÕES REMOVIDAS)
 # ============================================================
-
-message(STATUS "🧪 CMakeLists.txt carregado!")
 
 cmake_minimum_required(VERSION 3.16)
 
-# ESSENCIAL: Desativa malloc.c da SDK
+set(PICO_BOARD "pico")
 set(PICO_NO_MALLOC 1)
-
-# ============================================================
-# CONFIGURAÇÃO DE TOOLCHAIN - DEIXE O PICO SDK GERENCIAR
-# ============================================================
-# REMOVIDO: CMAKE_TRY_COMPILE_TARGET_TYPE (deixe o SDK configurar)
-# REMOVIDO: Flags redundantes de arquitetura
 
 include(external/pico-tflmicro/pico_sdk_import.cmake)
 
 project(pico_inference_project C CXX ASM)
 
-# O Pico SDK já configura automaticamente:
-# - CMAKE_SYSTEM_PROCESSOR
-# - Flags de arquitetura (-mcpu=cortex-m0plus -mthumb)
-# - Toolchain paths (se arm-none-eabi-gcc estiver no PATH)
-
 pico_sdk_init()
 
-message(STATUS "🚀 Usando configurações automáticas do Pico SDK")
+message(STATUS "🚀 Build configurado para Pico (padrão, sem WiFi) com TensorFlow Lite Micro")
 
 # ============================================================
-# CONFIGURAÇÃO CORRETA DO BOOT STAGE 2 (AUTOMÁTICO)
+# BIBLIOTECAS EXTERNAS
 # ============================================================
-# O SDK escolhe automaticamente baseado no PICO_BOARD="pico"
 
-# Desativa testes do pico-tflmicro se não forem usados
 set(PICO_TFLMICRO_ENABLE_TESTS OFF CACHE BOOL "Disable tests" FORCE)
+set(PICO_TFLMICRO_ENABLE_EXAMPLES OFF CACHE BOOL "Disable examples" FORCE)
 
-# Adiciona a subpasta da biblioteca TFLM com CMSIS-NN
 add_subdirectory(external/pico-tflmicro)
-
-# Biblioteca SSD1306
 add_subdirectory(lib/ssd1306)
 
-# Executável principal
+# ============================================================
+# EXECUTÁVEL PRINCIPAL
+# ============================================================
+
 add_executable(pico_inference_project
-    pico_inference_project.cpp
-    src/inference.cpp
-    src/model_data.cc
-    src/image_provider.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/pico_inference_project.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/inference.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/model_data.c
+    ${CMAKE_CURRENT_LIST_DIR}/src/image_provider.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/lib/ssd1306/font8x8_basic.c
 )
 
-# Includes necessários para o TFLM + seu projeto
+# ============================================================
+# INCLUDES
+# ============================================================
+
 target_include_directories(pico_inference_project PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/include
     ${CMAKE_CURRENT_LIST_DIR}/src
     ${CMAKE_CURRENT_LIST_DIR}/external/pico-tflmicro/src
 )
 
-# Linkagem de bibliotecas
+# ============================================================
+# LINKAGEM DE BIBLIOTECAS
+# ============================================================
+
 target_link_libraries(pico_inference_project PRIVATE
-    pico_stdlib
-    hardware_i2c
-    hardware_gpio
-    hardware_uart
     pico-tflmicro
     ssd1306
     pico_multicore
+    hardware_i2c
+    hardware_gpio
+    hardware_uart
+    pico_stdio_usb
+    pico_stdio_uart
+    pico_stdlib
 )
 
-# ⚠️ Habilita CMSIS-NN e memória estática do TFLM
+# ============================================================
+# DEFINIÇÕES DE COMPILAÇÃO
+# ============================================================
+
 target_compile_definitions(pico_inference_project PRIVATE
     CMSIS_NN
     TF_LITE_STATIC_MEMORY
@@ -78,10 +76,13 @@ target_compile_definitions(pico_inference_project PRIVATE
     ARM_MATH_CM0PLUS
 )
 
-# Otimizações de tamanho (sem flags redundantes de arquitetura)
+# ============================================================
+# OTIMIZAÇÕES E CORREÇÃO DE LINKER
+# ============================================================
+
+# Mantemos as otimizações de compilação, que são seguras.
 target_compile_options(pico_inference_project PRIVATE
     -Os
-    -flto
     -fomit-frame-pointer
     -fno-unroll-loops
     -fno-exceptions
@@ -89,15 +90,24 @@ target_compile_options(pico_inference_project PRIVATE
     -fdata-sections
 )
 
+# CRÍTICO: Comentamos as flags de otimização de LINKAGEM que estão
+# causando o problema para fins de diagnóstico.
 target_link_options(pico_inference_project PRIVATE
-    -flto
-    -Wl,--gc-sections
-    -Wl,--wrap=malloc
-    -Wl,--wrap=free
+    # -flto
+    # -Wl,--gc-sections
 )
 
-# Configurações específicas da Raspberry Pi Pico
+# ============================================================
+# CONFIGURAÇÕES FINAIS DO PICO
+# ============================================================
+
 pico_enable_stdio_uart(pico_inference_project 1)
-pico_enable_stdio_usb(pico_inference_project 0)
-pico_set_binary_type(pico_inference_project pico_sdk_default)
+pico_enable_stdio_usb(pico_inference_project 1)
+
+pico_set_binary_type(pico_inference_project default)
 pico_add_extra_outputs(pico_inference_project)
+
+message(STATUS "✅ Configuração completa - pronto para build!")
+
+
+

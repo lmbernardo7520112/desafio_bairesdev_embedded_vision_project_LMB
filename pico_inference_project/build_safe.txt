@@ -1,0 +1,6 @@
+g++     pico_inference_project.cpp   -o pico_inference_project
+pico_inference_project.cpp:2:10: fatal error: lib/ssd1306.h: No such file or directory
+    2 | #include "lib/ssd1306.h"
+      |          ^~~~~~~~~~~~~~~
+compilation terminated.
+make: *** [<builtin>: pico_inference_project] Error 1

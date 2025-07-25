@@ -1,13 +1,30 @@
-# .gitignore
-__pycache__/
-*.pyc
-.vscode/
-*.jpg
-*.png
-*.log
-*.zip
-*.mp4
-*.avi
+# Diretórios de compilação e saídas
+build/
+pico_inference_project/build/
+
+# Ferramentas locais e scripts
+pico_inference_project/auto_tools/
+
+# Arquivos de ambiente Python
 env/
 .venv/
+__pycache__/
+
+# Arquivos de backup e temporários
+*.bak
+*.swp
+*.log
+
+# Arquivos de IDE
+.vscode/
+.idea/
+
+# Arquivos de sistema
+.DS_Store
+
+# Ignorar arquivos de imagem
+*.jpg
+*.png
+
+# Ignorar diretório do notebook
 .embedded_vision_project_notebook_LMB/
