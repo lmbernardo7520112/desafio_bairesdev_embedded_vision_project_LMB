@@ -7,6 +7,7 @@
 #include "image_provider.h"
 #include "model_data.h"
 #include "model_settings.h"
+
 #include <stdio.h>
 #include <algorithm>
 #include <stdarg.h>
@@ -41,8 +42,9 @@ void run_inference() {
 
     static tflite::MicroInterpreter interpreter(model, resolver, tensor_arena, TENSOR_ARENA_SIZE);
     interpreter.AllocateTensors();
+
     TfLiteTensor* input = interpreter.input(0);
-    
+
     printf("  [INFERENCE] Preenchendo imagem de entrada...\n");
     FillImage();
     for (int i = 0; i < kMaxImageSize; ++i) {
@@ -57,8 +59,11 @@ void run_inference() {
     }
 
     TfLiteTensor* output = interpreter.output(0);
-    int predicted_class = std::distance(output->data.f, std::max_element(output->data.f, output->data.f + output->dims->data[1]));
-    
+    int predicted_class = std::distance(
+        output->data.f,
+        std::max_element(output->data.f, output->data.f + output->dims->data[1])
+    );
+
     printf("  ----------------------------------------\n");
     printf("  [INFERENCE] RESULTADO: Classe Predita = %d\n", predicted_class);
     printf("  ----------------------------------------\n");
