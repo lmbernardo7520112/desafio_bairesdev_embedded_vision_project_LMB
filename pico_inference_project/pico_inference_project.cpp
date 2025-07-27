@@ -1,15 +1,17 @@
-// ======================================================================= 
-//  ARQUIVO FINAL E FUNCIONAL (SEM I2C, MONITORADO VIA PUTTY)
+// =======================================================================
+//  ARQUIVO FINAL E ROBUSTO PARA COMUNICAÇÃO UART COM A PI 3
+//  - Comunicação UART limpa, segura e compatível
+//  - Detecta "FOTO_OK\n" com precisão
+//  - Executa inferência ao receber comando correto
 // =======================================================================
 
 #include <stdio.h>
 #include <string.h>
 #include "pico/stdlib.h"
 #include "hardware/uart.h"
-#include "inference.h" // Nossa lógica de inferência (sem display)
+#include "inference.h"
 
-// --- CONFIGURAÇÃO DE PINOS ---
-// UART para comunicação com a Raspberry Pi 3
+// UART config
 #define PI_UART_INSTANCE   uart1
 #define PI_UART_TX_PIN     4
 #define PI_UART_RX_PIN     9
@@ -17,13 +19,11 @@
 
 int main() {
     stdio_init_all();
-
     while (!stdio_usb_connected()) {
         sleep_ms(100);
     }
-    sleep_ms(100);
+    sleep_ms(200);
 
-    // Mensagem de inicialização
     printf("\n\n--- PICO W INFERENCE ENGINE (Build Estável) ---\n");
     printf("STATUS: USB (stdio) inicializado com sucesso.\n");
 
@@ -34,38 +34,41 @@ int main() {
 
     printf("\n>>> SISTEMA PRONTO. AGUARDANDO GATILHO DA PI 3... <<<\n");
 
-    char uart_buffer[32];
+    char uart_buffer[64];
     int buffer_index = 0;
 
     while (true) {
-        if (uart_is_readable(PI_UART_INSTANCE)) {
+        while (uart_is_readable(PI_UART_INSTANCE)) {
             char c = uart_getc(PI_UART_INSTANCE);
-            printf("Recebido: %c\n", c);
+            printf("[UART DEBUG] Recebido: 0x%02X '%c'\n", c, c);
 
-            // Armazena no buffer até encontrar o caractere de quebra de linha
-            if (c == '\n' || buffer_index >= (int)(sizeof(uart_buffer) - 1)) {
-                uart_buffer[buffer_index] = '\0';
+            if (c == '\n' || c == '\r') {
+                if (buffer_index > 0) {
+                    uart_buffer[buffer_index] = '\0';
+                    printf("[UART] Comando recebido: '%s'\n", uart_buffer);
 
-                // Verifica se o comando é "FOTO_OK"
-                if (strncmp(uart_buffer, "FOTO_OK", 7) == 0) {
-                    printf("\n[PICO_W] GATILHO 'FOTO_OK' RECEBIDO!\n");
+                    if (strcmp(uart_buffer, "TESTE_UART") == 0) {
+                        printf("[PICO] Teste UART recebido com sucesso.\n");
+                    } else if (strcmp(uart_buffer, "FOTO_OK") == 0) {
+                        printf("[PICO] Gatilho 'FOTO_OK' reconhecido. Executando inferência...\n");
+                        run_inference();
+                        printf("[PICO] Inferência finalizada.\n");
+                    } else {
+                        printf("[PICO] Comando UART desconhecido: '%s'\n", uart_buffer);
+                    }
 
-                    // Executa inferência
-                    run_inference();
-
-                    printf("\n>>> SISTEMA PRONTO. AGUARDANDO PRÓXIMO GATILHO... <<<\n");
-                } else {
-                    printf("[PICO_W] Comando UART desconhecido: '%s'\n", uart_buffer);
+                    buffer_index = 0;
+                    memset(uart_buffer, 0, sizeof(uart_buffer));
                 }
-
-                buffer_index = 0;
-            } else if (c >= ' ') {
-                uart_buffer[buffer_index++] = c;
+            } else if (c >= 32 && c <= 126) {
+                if (buffer_index < (int)(sizeof(uart_buffer) - 1)) {
+                    uart_buffer[buffer_index++] = c;
+                }
             }
         }
-        sleep_ms(5);
+
+        sleep_ms(10);
     }
 
     return 0;
 }
-
