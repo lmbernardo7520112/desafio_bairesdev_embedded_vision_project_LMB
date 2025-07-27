@@ -79,29 +79,31 @@ fi
 
 echo "✅ CMAKE configurado com sucesso"
 
+# EXECUTAR BUILD (MODO DE DIAGNÓSTICO DETALHADO)
 # ============================================================
-# EXECUTAR BUILD
-# ============================================================
 
-echo "🔨 Iniciando compilação..."
+echo "🔨 Iniciando compilação em modo de diagnóstico..."
 
-# Compilar apenas nosso target específico
-make pico_inference_project -j$(nproc) 2>&1 | tee build_output.log
+# Tenta compilar o projeto. Se falhar, o script continuará.
+make pico_inference_project -j$(nproc)
 
-BUILD_RESULT=$?
-
-if [ $BUILD_RESULT -ne 0 ]; then
-    echo "❌ ERRO na compilação do target principal!"
-    echo "📋 Log salvo em: build/build_output.log"
-    echo ""
-    echo "🔍 Tentando compilação com mais detalhes..."
-    make pico_inference_project VERBOSE=1 2>&1 | tee build_verbose.log
-    echo ""
-    echo "📋 Log verboso salvo em: build/build_verbose.log"
-    echo "🔍 Últimas linhas do erro:"
-    tail -30 build_verbose.log
+# Verifica se o make falhou
+if [ $? -ne 0 ]; then
+    echo "-----------------------------------------------------------------"
+    echo "🚨 BUILD FALHOU. Focando no arquivo problemático: src/inference.cpp"
+    echo "-----------------------------------------------------------------"
+    
+    # Executa o comando de compilação para APENAS o arquivo problemático
+    # com a flag VERBOSE=1 para mostrar o comando exato e o erro.
+    # Este comando vai falhar, mas nos dará o erro exato e completo.
+    make CMakeFiles/pico_inference_project.dir/src/inference.cpp.o VERBOSE=1
+    
+    echo "-----------------------------------------------------------------"
+    echo "❌ ERRO DETALHADO ACIMA. A compilação foi interrompida."
+    echo "-----------------------------------------------------------------"
     exit 1
 fi
+
 
 # ============================================================
 # VERIFICAR SAÍDAS
