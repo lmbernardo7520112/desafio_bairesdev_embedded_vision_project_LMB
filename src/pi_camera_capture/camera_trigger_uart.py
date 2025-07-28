@@ -1,4 +1,3 @@
-lmbernardo@raspberrypi:~ $ cat camera_trigger_uart.py 
 import serial
 import time
 import subprocess
