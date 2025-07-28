@@ -7,97 +7,111 @@
 
 ## 📄 Descrição do Projeto
 
-Este repositório implementa um sistema completo de inferência embarcada utilizando a microcontroladora **Raspberry Pi Pico (RP2040)**. O sistema é capaz de realizar classificação em tempo real com um modelo leve baseado em **TensorFlow Lite for Microcontrollers (TFLM)** otimizado com **CMSIS-NN**.
+Este projeto realiza inferência de imagens em tempo real utilizando um microcontrolador **Raspberry Pi Pico (RP2040)** com modelo embarcado do **TensorFlow Lite for Microcontrollers (TFLM)**, otimizado com **CMSIS-NN**. O modelo classifica expressões faciais a partir de imagens 48×48 processadas previamente no host (Raspberry Pi 3).
 
-A aplicação embarcada foi desenvolvida em C++ com uso intensivo do **Pico SDK** e executa inferência utilizando um modelo `.tflite` especializado para classificação de expressões faciais com imagens 48×48. O modelo foi treinado com **Transfer Learning** no Google Colab (vide notebook anexo), e convertido para um array C (`model_data.cc`) para embarque no firmware.
-
-> 📌 **Latência alvo:** < 100ms por inferência  
-> ⚙️ **Plataforma alvo:** Raspberry Pi Pico (264KB RAM / 2MB Flash)  
-> 🧠 **Modelo:** CNN (convolucional) treinado com imagens de expressões faciais
+> 📸 A captura é feita por **câmera USB** conectada ao Raspberry Pi 3 (não à Pico).  
+> 📤 A imagem é processada no Pi 3 e enviada via **UART** à Pico.  
+> 📊 O resultado da inferência é visualizado via **monitor serial (PuTTY)**.
 
 ---
 
-## 🛠️ Tecnologias e Ferramentas Utilizadas
+## 🧠 Arquitetura Geral
 
-- **Microcontrolador:** Raspberry Pi Pico (RP2040, Cortex-M0+ dual-core)
-- **Framework Principal:** TensorFlow Lite for Microcontrollers (TFLM)
-- **Backend de Otimização:** CMSIS-NN
-- **SDK:** Pico SDK 1.5.1
-- **Compilador:** `gcc-arm-none-eabi-10.3-2021.10`
-- **Display:** SSD1306 I²C OLED (para saída da classe prevista)
-- **Treinamento do Modelo:** Google Colab com GPU T4 (modelo `.tflite` gerado com Transfer Learning)
+```text
+[Câmera USB] ─┬─> [Raspberry Pi 3 (host)]
+              │       └─> Captura + Redimensionamento + Normalização
+              │       └─> Envio via UART
+              ↓
+        [Raspberry Pi Pico (RP2040)]
+              └─> Recebe dados normalizados
+              └─> Executa inferência com TFLM
+              └─> Exibe resultado no monitor serial (ex: PuTTY)
+```
 
----
-
-## ⚙️ Pipeline do Projeto
-
-### 1. 🎓 Treinamento e Conversão do Modelo (`Colab`)
-
-- O modelo original foi treinado no notebook **`modelo_expressoes_TFLite.ipynb`** usando Transfer Learning.
-- Após atingir precisão satisfatória nas classes de interesse, o modelo foi quantizado e exportado como `.tflite`.
-- A ferramenta `xxd` foi usada para converter o modelo em array C (`model_data.cc`) para embarque estático.
-
-### 2. 🧠 Integração com TFLM no RP2040
-
-- O código embarcado integra:
-  - Um **pipeline de inferência com `MicroInterpreter`** da TFLM
-  - Operações essenciais como `Conv2D`, `Relu`, `MaxPool2D`, `Softmax`, `FullyConnected`, `Reshape`, `Pad`, `StridedSlice`
-  - `tensor_arena` estático com 20KB configurado para evitar `malloc`
-
-### 3. 🖼️ Captura e Pré-processamento
-
-- Um módulo `image_provider.cpp` simula a aquisição da imagem e gera os dados normalizados para inferência.
-- Os dados são inseridos manualmente no tensor de entrada.
-
-### 4. 📟 Exibição no Display SSD1306
-
-- O resultado da classificação (índice da classe) é exibido diretamente no display OLED I²C.
-- O display é gerenciado por uma biblioteca leve baseada no protocolo SSD1306.
+> 💬 A exibição em display OLED SSD1306 **ainda não foi implementada**, embora a biblioteca esteja pronta no projeto.
 
 ---
 
-## 📋 Estrutura do Código
+## 🛠️ Tecnologias e Ferramentas
+
+- **Hardware**
+  - Raspberry Pi Pico (RP2040, Cortex-M0+)
+  - Raspberry Pi 3 (Host USB/UART)
+  - Câmera USB
+  - OLED SSD1306 (planejado)
+  - ESP32 (modo analisador lógico, opcional)
+- **Software**
+  - TensorFlow Lite Micro + CMSIS-NN
+  - C++17 com Pico SDK
+  - `gcc-arm-none-eabi` toolchain
+  - PuTTY / Minicom (monitor serial)
+  - sigrok/PulseView (para análise de sinais UART)
+
+---
+
+## 📂 Estrutura do Código
+
+```
 pico_inference_project/
 │
-├── CMakeLists.txt # Configuração de build (otimizações -Os, flags ARM)
+├── CMakeLists.txt              # Configuração do projeto (compilador, flags ARM)
 ├── src/
-│ ├── inference.cpp # Pipeline de inferência TFLM
-│ ├── image_provider.cpp/.h # Simulação de aquisição de imagem
-│ ├── model_data.cc # Modelo embarcado como array
+│   ├── main.cpp                # Função principal: UART, inferência, logs
+│   ├── inference.cpp/.h       # Pipeline da TFLM (tensores, operador, arena)
+│   ├── image_provider.cpp/.h  # Interface para imagem (buffer UART → tensor)
+│   ├── model_data.cc/.h       # Array C do modelo .tflite quantizado
 │
-├── lib/ssd1306/ # Biblioteca do display OLED
-├── external/pico-tflmicro/ # Submódulo com TFLM + CMSIS-NN
-├── include/ # Headers locais
-├── toolchain-arm-none-eabi.cmake
-└── env.sh # Setup de variáveis de ambiente
+├── lib/
+│   └── ssd1306/                # Biblioteca SSD1306 (OLED) – ainda não usada
+├── include/                   # Headers comuns
+├── external/pico-tflmicro/    # Submódulo TFLM + CMSIS-NN (otimizado ARM)
+├── env.sh                     # Script para configurar toolchain e SDK
+└── toolchain-arm-none-eabi.cmake
+```
 
 ---
 
-## ✅ Status e Resultados Esperados
+## 🔎 Estado Atual
 
-- [x] Build com `pico-sdk` e `pico-tflmicro` com sucesso
-- [x] Display I²C funcional
-- [x] Pipeline de inferência funcional com `model_data.cc`
-- [ ] Acurácia validada com imagens reais
-- [ ] Migração futura para captura de imagem via câmera SPI/UART (ex: ArduCam)
-
----
-
-## 🧪 Próximos Passos
-
-- [ ] Medição real da latência (< 100ms alvo)
-- [ ] Compressão adicional do modelo com quantização agressiva
-- [ ] Uso de segundo core da Pico para desacoplar aquisição/inferência
+- ✅ Código da Pico compila corretamente com suporte completo ao TFLM.
+- ✅ Comunicação UART configurada com `uart0`, `baudrate 115200`, RX/TX definidos.
+- ✅ Recepção dos dados de imagem 48×48 do Pi 3 via serial.
+- ✅ Inferência executa sem falhas com `MicroInterpreter`.
+- ✅ Logs da inferência são exibidos via **monitor serial (PuTTY)**.
+- ⚠️ **UART apresenta ruído ou dados corrompidos** — em depuração.
+- ⏳ A exibição em OLED ainda será implementada.
 
 ---
 
-## 📎 Anexos
+## 🧪 Próximas Etapas
 
-- 📓 `modelo_expressoes_TFLite.ipynb` (Google Colab): Treinamento via Transfer Learning
-- 📘 `arquivo-para-reduzir-modelo.pdf`: Análise de footprint e sugestões de compressão
+- [ ] Resolver problema de integridade dos dados UART (desalinhamento, sincronização)
+- [ ] Adicionar parsing robusto do buffer UART (start/stop delimiters ou checksum)
+- [ ] Medir latência real por frame
+- [ ] Ligar e testar exibição com display OLED SSD1306
+- [ ] Dividir UART/Inferência entre os dois cores do RP2040 (multi-core)
+- [ ] Avaliar podas/extensões de modelo (CNN separável, pruning)
 
 ---
 
-## 💡 Contribuição
+## 🧰 Debug com ESP32 como Analisador Lógico
 
-Este projeto é voltado para entusiastas e profissionais de sistemas embarcados que desejam executar redes neurais diretamente em microcontroladores de baixo custo e baixa potência sem depender de conectividade ou edge gateways.
+Para diagnóstico mais preciso da UART (ruído, start bits, tempos), o ESP32 foi configurado como **analisador lógico compatível com protocolo SUMP**, com o firmware `logic_analyzer-pico.ino`.
+
+- Sinais RX e TX são capturados diretamente do Pi 3 ou da Pico.
+- Visualização no **PulseView** com clock de amostragem personalizado.
+
+---
+
+## 📎 Complementos
+
+- 📁 `modelo_expressoes_TFLite.ipynb` — Treinamento e quantização do modelo
+- 📁 `model_data.cc` — Modelo como array embarcado
+- 🔧 `env.sh` — Exporta variáveis de ambiente do SDK e toolchain
+- 📸 Câmera USB gerenciada 100% pelo **Raspberry Pi 3** (não pela Pico)
+
+---
+
+## 📢 Aviso Final
+
+> A câmera utilizada neste projeto é uma **USB conectada ao Raspberry Pi 3**, responsável pela captura, preprocessamento e envio serial. A **Raspberry Pi Pico não realiza captura direta de imagem** nem usa câmera SPI, CSI ou PIO.
