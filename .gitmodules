@@ -4,3 +4,6 @@
 [submodule "pico_inference_project/lib/pico-ssd1306"]
 	path = pico_inference_project/lib/pico-ssd1306
 	url = https://github.com/daschr/pico-ssd1306.git
+[submodule "pico_inference_project/external/tflite-micro"]
+	path = pico_inference_project/external/tflite-micro
+	url = https://github.com/tensorflow/tflite-micro.git

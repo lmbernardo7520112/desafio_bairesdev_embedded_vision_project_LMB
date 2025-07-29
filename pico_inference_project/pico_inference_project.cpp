@@ -40,7 +40,7 @@ int main() {
     while (true) {
         while (uart_is_readable(PI_UART_INSTANCE)) {
             char c = uart_getc(PI_UART_INSTANCE);
-            printf("[UART DEBUG] Recebido: 0x%02X '%c'\n", c, c);
+            // printf("[UART DEBUG] Recebido: 0x%02X '%c'\n", c, c);
 
             if (c == '\n' || c == '\r') {
                 if (buffer_index > 0) {
