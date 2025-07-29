@@ -22,7 +22,7 @@ def capture_image(filename="captura_pi3.jpg"):
     try:
         subprocess.run(["fswebcam", "-r", "640x480", "--no-banner", filename], check=True)
         print(f"✅ Imagem salva: {filename}")
-        return os.path.exists(filename)
+        return os.path.exists(filename) # type: ignore
     except subprocess.CalledProcessError:
         print("❌ Erro ao capturar imagem.")
         return False

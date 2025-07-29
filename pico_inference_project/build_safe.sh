@@ -85,7 +85,7 @@ echo "✅ CMAKE configurado com sucesso"
 echo "🔨 Iniciando compilação em modo de diagnóstico..."
 
 # Tenta compilar o projeto. Se falhar, o script continuará.
-make pico_inference_project -j$(nproc)
+make -j$(nproc)
 
 # Verifica se o make falhou
 if [ $? -ne 0 ]; then
