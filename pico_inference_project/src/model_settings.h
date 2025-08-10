@@ -9,6 +9,7 @@
 // que o seu modelo de reconhecimento de emoções espera.
 constexpr int kNumRows = 48;
 constexpr int kNumCols = 48;
+constexpr int kNumChannels = 1; // grayscale
 constexpr int kMaxImageSize = kNumRows * kNumCols; // 48 * 48 = 2304
 
 // --- CONFIGURAÇÕES DA SAÍDA DO MODELO ---

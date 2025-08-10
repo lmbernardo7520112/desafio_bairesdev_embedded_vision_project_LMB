@@ -1,70 +1,58 @@
-#include "inference.h"
-#include "pico/stdlib.h"
-
-#include "tensorflow/lite/micro/micro_interpreter.h"
-#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
-#include "tensorflow/lite/schema/schema_generated.h"
-#include "image_provider.h"
-#include "model_data.h"
-#include "model_settings.h"
+// inference.cpp
+// Implementação de run_inference_from_buffer(...) usada pelo receptor UDP.
+// Esta versão faz validações básicas e mostra logs.
+// Substitua/integre a lógica TFLM aqui conforme seu modelo.
 
 #include <stdio.h>
-#include <algorithm>
-#include <stdarg.h>
+#include <string.h>
+#include <stdint.h>
+#include "model_settings.h" // kNumRows, kNumCols, kNumChannels
+#include "inference.h"      // declaração da função (header)
 
-#define TENSOR_ARENA_SIZE (20 * 1024)
-uint8_t tensor_arena[TENSOR_ARENA_SIZE];
+#ifndef K_EXPECTED_IMAGE_BYTES
+// Se seu modelo espera kNumRows*kNumCols*(kNumChannels), definimos aqui:
+#define K_EXPECTED_IMAGE_BYTES (kNumRows * kNumCols * kNumChannels)
+#endif
 
-class SimpleErrorReporter : public tflite::ErrorReporter {
-public:
-    int Report(const char* format, va_list args) override {
-        vprintf(format, args);
-        printf("\n");
-        return 0;
-    }
-};
-
-void run_inference() {
-    printf("  [INFERENCE] Iniciando processo de inferência...\n");
-
-    static SimpleErrorReporter error_reporter;
-    const tflite::Model* model = tflite::GetModel(model_data);
-
-    static tflite::MicroMutableOpResolver<10> resolver;
-    resolver.AddConv2D();
-    resolver.AddRelu();
-    resolver.AddMaxPool2D();
-    resolver.AddSoftmax();
-    resolver.AddFullyConnected();
-    resolver.AddReshape();
-    resolver.AddPad();
-    resolver.AddStridedSlice();
-
-    static tflite::MicroInterpreter interpreter(model, resolver, tensor_arena, TENSOR_ARENA_SIZE);
-    interpreter.AllocateTensors();
-
-    TfLiteTensor* input = interpreter.input(0);
-
-    printf("  [INFERENCE] Preenchendo imagem de entrada...\n");
-    FillImage();
-    for (int i = 0; i < kMaxImageSize; ++i) {
-        input->data.f[i] = image_data[i];
-    }
-
-    printf("  [INFERENCE] Invocando modelo TFLite...\n");
-    TfLiteStatus status = interpreter.Invoke();
-    if (status != kTfLiteOk) {
-        printf("  [INFERENCE] ERRO: Falha ao invocar o modelo.\n");
+// Expor a função que o receiver chama
+void run_inference_from_buffer(uint8_t* buf, size_t len, int width, int height) {
+    // validações simples
+    if (!buf || len == 0) {
+        printf("[INFERENCE] Buffer vazio\n");
         return;
     }
+    printf("[INFERENCE] Buffer recebido: %u bytes (w=%d h=%d)\n", (unsigned)len, width, height);
 
-    TfLiteTensor* output = interpreter.output(0);
-    int predicted_class = std::distance(
-        output->data.f,
-        std::max_element(output->data.f, output->data.f + output->dims->data[1])
-    );
+    // Se o modelo foi treinado para expect grayscale raw of exact size (48x48), cheque:
+    size_t expected = (size_t)width * (size_t)height * (size_t)kNumChannels;
+    if (len < expected) {
+        printf("[INFERENCE] Aviso: bytes recebidos (%u) < esperado (%u). Continuando com o que há.\n",
+               (unsigned)len, (unsigned)expected);
+    }
 
-    printf("  ----------------------------------------\n");
-    printf("  [INFERENCE] RESULTADO: Classe Predita = %d\n", predicted_class);
-    printf("  ----------------------------------------\n");
+    // >>> Aqui é o ponto onde você integra seu TFLM:
+    // - Converter os bytes recebidos para o formato do tensor (float ou uint8)
+    // - Preencher o tensor de entrada
+    // - Invocar o interpreter
+    //
+    // Por enquanto, apenas log e um resultado de placeholder:
+
+    // (Exemplo: print primeiros 8 bytes para debug)
+    printf("[INFERENCE] primeiros bytes (hex):");
+    for (size_t i = 0; i < len && i < 8; ++i) {
+        printf(" %02X", buf[i]);
+    }
+    printf("\n");
+
+    // Resultado placeholder (substitua pelo resultado real do modelo)
+    int predicted_class = -1;
+    // se quiser, execute aqui sua run_inference() existente se já estiver implementada:
+    // run_inference(); // se você tiver uma função global que já usa FillImage etc.
+
+    // Exibir resultado (placeholder)
+    if (predicted_class >= 0) {
+        printf("[INFERENCE] Classe prevista: %d\n", predicted_class);
+    } else {
+        printf("[INFERENCE] Inferência não implementada - esta é uma stub.\n");
+    }
 }
