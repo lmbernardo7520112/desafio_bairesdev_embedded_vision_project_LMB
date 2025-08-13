@@ -297,92 +297,120 @@ static void log_connection_progress(const char* stage) {
     dump_cyw43_state();
 }
 
-// Conecta usando canal e auth específicos detectados no scan
-static int connect_with_specific_params(const char *ssid, const char *pass, uint8_t channel, uint32_t auth_mode, uint32_t timeout_ms) {
+// Tenta conectar com modo de autenticação específico
+static int try_connect_with_auth(const char *ssid, const char *pass, uint32_t auth_mode, uint32_t timeout_ms) {
+    printf("[AUTH] Tentando auth: %s (0x%x)\n", auth_mode_to_string(auth_mode), (unsigned)auth_mode);
+    
+    // Desativa powersave para melhor performance durante conexão
+    cyw43_wifi_pm(&cyw43_state, CYW43_NO_POWERSAVE_MODE);
+    
+    log_connection_progress("PRÉ-CONEXÃO");
+    
+    int ret = cyw43_arch_wifi_connect_timeout_ms(ssid, pass, auth_mode, timeout_ms);
+    
+    printf("[AUTH] Resultado: %d\n", ret);
+    log_connection_progress("PÓS-TENTATIVA");
+    
+    return ret;
+}
+
+// Conecta usando canal detectado e tentando múltiplos modos de auth
+static int connect_with_specific_params(const char *ssid, const char *pass, uint8_t channel, uint32_t detected_auth, uint32_t timeout_ms) {
     printf("\n=== INICIANDO CONEXÃO COM PARÂMETROS ESPECÍFICOS ===\n");
     printf("[CONN] SSID: '%s'\n", ssid);
-    printf("[CONN] Canal: %d\n", channel);
-    printf("[CONN] Auth: %s (0x%x)\n", auth_mode_to_string(auth_mode), (unsigned)auth_mode);
+    printf("[CONN] Canal detectado: %d\n", channel);
+    printf("[CONN] Auth detectado: %s (0x%x)\n", auth_mode_to_string(detected_auth), (unsigned)detected_auth);
     printf("[CONN] Timeout: %u ms\n", (unsigned)timeout_ms);
     
     // Log senha (cuidado em produção!)
     print_string_bytes_hex("[CONN] Senha", pass);
     
-    // Desativa powersave para melhor performance durante conexão
-    printf("[AUTH] Desativando powersave...\n");
-    cyw43_wifi_pm(&cyw43_state, CYW43_NO_POWERSAVE_MODE);
+    // Lista de modos de autenticação para tentar (do mais específico ao mais geral)
+    uint32_t auth_modes_to_try[] = {
+        detected_auth,              // Primeiro, tenta o detectado
+        CYW43_AUTH_WPA2_AES_PSK,   // WPA2-AES (mais comum)
+        CYW43_AUTH_WPA2_MIXED_PSK, // WPA2-Mixed
+        CYW43_AUTH_WPA_TKIP_PSK,   // WPA-TKIP (fallback)
+    };
     
-    log_connection_progress("PRÉ-CONEXÃO");
+    size_t num_modes = sizeof(auth_modes_to_try) / sizeof(auth_modes_to_try[0]);
     
-    // Inicia conexão com parâmetros específicos
-    printf("[AUTH] Chamando cyw43_arch_wifi_connect_timeout_ms...\n");
-    int ret = cyw43_arch_wifi_connect_timeout_ms(ssid, pass, auth_mode, timeout_ms);
+    // Se o modo detectado não é suportado (0x5 = WPA3), informa e tenta alternativas
+    if (detected_auth == 0x5) {
+        printf("[AUTH] ⚠️  MODO WPA3 (0x5) DETECTADO - NÃO SUPORTADO PELO PICO W!\n");
+        printf("[AUTH] 💡 Tentando modos compatíveis (WPA2/WPA)...\n");
+        printf("[AUTH] 📝 Dica: Configure seu hotspot para usar WPA2-AES se possível\n");
+    }
     
-    printf("[AUTH] Resultado da conexão: %d\n", ret);
-    log_connection_progress("PÓS-TENTATIVA DE CONEXÃO");
-    
-    if (ret == 0) {
-        printf("[AUTH] ✓ Link estabelecido com sucesso!\n");
+    for (size_t i = 0; i < num_modes; ++i) {
+        uint32_t auth_mode = auth_modes_to_try[i];
         
-        // Aguarda IP via DHCP
-        printf("[DHCP] Aguardando endereço IP...\n");
-        absolute_time_t dhcp_until = make_timeout_time_ms(10000); // 10s para DHCP
+        // Evita tentar o mesmo modo duas vezes
+        if (i > 0 && auth_mode == detected_auth) continue;
         
-        while (!have_ip_address() && absolute_time_diff_us(get_absolute_time(), dhcp_until) > 0) {
-            cyw43_arch_poll();
-            sleep_ms(100);
+        printf("\n--- Tentativa %u/%u ---\n", (unsigned)(i+1), (unsigned)num_modes);
+        
+        int ret = try_connect_with_auth(ssid, pass, auth_mode, timeout_ms);
+        
+        if (ret == 0) {
+            printf("[AUTH] ✓ SUCESSO com %s!\n", auth_mode_to_string(auth_mode));
             
-            // Log periódico do status DHCP
-            static uint32_t dhcp_log_counter = 0;
-            if (++dhcp_log_counter % 20 == 0) { // A cada 2 segundos
-                printf("[DHCP] Ainda aguardando IP... (%u)\n", dhcp_log_counter / 10);
-                log_connection_progress("AGUARDANDO DHCP");
+            // Aguarda IP via DHCP
+            printf("[DHCP] Aguardando endereço IP...\n");
+            absolute_time_t dhcp_until = make_timeout_time_ms(10000);
+            
+            while (!have_ip_address() && absolute_time_diff_us(get_absolute_time(), dhcp_until) > 0) {
+                cyw43_arch_poll();
+                sleep_ms(100);
+                
+                static uint32_t dhcp_log_counter = 0;
+                if (++dhcp_log_counter % 20 == 0) {
+                    printf("[DHCP] Aguardando IP... (%u s)\n", dhcp_log_counter / 10);
+                }
             }
+            
+            if (have_ip_address()) {
+                printf("[DHCP] ✓ IP obtido com sucesso!\n");
+            } else {
+                printf("[DHCP] ✗ Timeout DHCP (prosseguindo)\n");
+            }
+            
+            log_connection_progress("CONEXÃO FINAL");
+            return 0;
         }
         
-        if (have_ip_address()) {
-            printf("[DHCP] ✓ IP obtido com sucesso!\n");
-        } else {
-            printf("[DHCP] ✗ Timeout no DHCP (prosseguindo mesmo assim)\n");
-        }
-        
-        log_connection_progress("CONEXÃO FINAL");
-        return 0;
-        
-    } else {
-        printf("[AUTH] ✗ Falha na conexão!\n");
-        
-        // Diagnóstico detalhado do erro
+        // Diagnóstico do erro específico
+        printf("[AUTH] ✗ Falha com %s\n", auth_mode_to_string(auth_mode));
         switch (ret) {
             case CYW43_LINK_NONET:
-                printf("[AUTH] Causa: Rede não encontrada no canal %d\n", channel);
-                printf("[AUTH] Sugestão: Verifique se o AP ainda está no canal %d\n", channel);
+                printf("[AUTH]   Causa: Rede não encontrada\n");
                 break;
-                
             case CYW43_LINK_BADAUTH:
-                printf("[AUTH] Causa: Falha de autenticação\n");
-                printf("[AUTH] Verificações:\n");
-                printf("[AUTH]   1. Senha está correta?\n");
-                printf("[AUTH]   2. Modo auth %s é suportado pelo AP?\n", auth_mode_to_string(auth_mode));
-                printf("[AUTH]   3. AP não está rejeitando por filtro MAC?\n");
+                printf("[AUTH]   Causa: Modo de auth incompatível ou senha errada\n");
                 break;
-                
             case CYW43_LINK_FAIL:
-                printf("[AUTH] Causa: Falha de associação/link\n");
-                printf("[AUTH] Possíveis causas:\n");
-                printf("[AUTH]   1. Interferência no canal %d\n", channel);
-                printf("[AUTH]   2. AP com muitos clientes conectados\n");
-                printf("[AUTH]   3. Sinal muito fraco (era %d dBm)\n", target_ap.best_rssi);
+                printf("[AUTH]   Causa: Falha de link/associação\n");
                 break;
-                
             default:
-                printf("[AUTH] Causa: Timeout ou erro desconhecido (%d)\n", ret);
+                printf("[AUTH]   Causa: Timeout/erro %d\n", ret);
                 break;
         }
         
-        log_connection_progress("FALHA DE CONEXÃO");
-        return ret;
+        // Aguarda um pouco antes da próxima tentativa
+        if (i < num_modes - 1) {
+            printf("[AUTH] Aguardando 2s antes da próxima tentativa...\n");
+            sleep_ms(2000);
+        }
     }
+    
+    printf("\n[AUTH] ❌ TODAS AS TENTATIVAS DE AUTH FALHARAM!\n");
+    printf("[AUTH] Sugestões:\n");
+    printf("[AUTH]   1. Verifique se a senha está correta\n");
+    printf("[AUTH]   2. Configure o hotspot para WPA2-AES\n");
+    printf("[AUTH]   3. Verifique se não há filtro MAC\n");
+    printf("[AUTH]   4. Tente aproximar o Pico W do hotspot\n");
+    
+    return -1; // Falha geral
 }
 
 // Função principal de conexão com tentativas
