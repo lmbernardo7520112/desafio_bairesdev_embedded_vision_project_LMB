@@ -2,6 +2,9 @@
 build/
 pico_inference_project/build/
 
+# Váriaveis sensíveis
+model_settings.h
+
 # Ferramentas locais e scripts
 pico_inference_project/auto_tools/
 

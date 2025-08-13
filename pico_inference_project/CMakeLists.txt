@@ -75,7 +75,7 @@ target_link_libraries(pico_inference_project
 # Saída USB e UART
 # ============================================================
 pico_enable_stdio_usb(pico_inference_project 1)
-pico_enable_stdio_uart(pico_inference_project 1)
+pico_enable_stdio_uart(pico_inference_project 0)
 
 # ============================================================
 # Geração de binários UF2
