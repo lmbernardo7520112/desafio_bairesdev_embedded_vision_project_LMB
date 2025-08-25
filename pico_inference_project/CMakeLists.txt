@@ -1,11 +1,10 @@
-# ============================================================
-# CMakeLists.txt - Pico W (UDP Wi-Fi) + TensorFlow Lite Micro
-# ============================================================
-
 cmake_minimum_required(VERSION 3.13)
 
 # Importa SDK do Pico a partir da variável de ambiente PICO_SDK_PATH
 include($ENV{PICO_SDK_PATH}/external/pico_sdk_import.cmake)
+
+# Define a placa como Pico W
+set(PICO_BOARD pico_w)
 
 # Nome do projeto e padrões de compilação
 project(pico_inference_project C CXX ASM)
@@ -16,48 +15,41 @@ set(CMAKE_CXX_STANDARD 17)
 pico_sdk_init()
 
 # ============================================================
-# Dependências externas
-# ============================================================
-# Adiciona biblioteca do TensorFlow Lite Micro adaptada para Pico
-add_subdirectory(external/pico-tflmicro EXCLUDE_FROM_ALL)
-
-# ============================================================
 # Arquivos do projeto
 # ============================================================
 add_executable(pico_inference_project
     pico_inference_project.cpp
-    src/inference.cpp
-    src/image_provider.cpp
-    src/model_data.c
 )
 
+# Define o nome do binário de saída
 set_target_properties(pico_inference_project PROPERTIES OUTPUT_NAME pico_inference_project)
 set(CMAKE_EXECUTABLE_SUFFIX ".elf")
 
 # ============================================================
 # Includes
 # ============================================================
-# Inclui diretórios para encontrar headers do projeto e do TFLM
 target_include_directories(pico_inference_project PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}/include
-    src
-    external/pico-tflmicro/src
-)
-
-# Garante que o lwipopts.h otimizado para UDP seja usado
-target_include_directories(pico_inference_project PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}        # local onde está o lwipopts.h
+    ${CMAKE_CURRENT_LIST_DIR}
+    ${CMAKE_CURRENT_LIST_DIR}/include # For lwipopts.h
+    ${PICO_SDK_PATH}/src/rp2_common/pico_cyw43_arch/include
+    ${PICO_SDK_PATH}/lib/cyw43-driver/src
     ${PICO_SDK_PATH}/lib/lwip/src/include
     ${PICO_SDK_PATH}/lib/lwip/src/include/lwip
     ${PICO_SDK_PATH}/lib/lwip/src/include/posix
+    ${PICO_SDK_PATH}/src/rp2_common/pico_cyw43_driver/include
+    ${PICO_SDK_PATH}/src/rp2_common/pico_lwip/include
+    ${PICO_SDK_PATH}/src/common/pico_base/include
+    ${PICO_SDK_PATH}/src/rp2_common/pico_async_context/include
+    ${PICO_SDK_PATH}/src/rp2_common/pico_rand/include
 )
 
 # ============================================================
-# Definições de compilação (opcional para otimização UDP)
+# Definições de compilação
 # ============================================================
 target_compile_definitions(pico_inference_project PRIVATE
     CYW43_LWIP=1
     PICO_CYW43_ARCH_THREADSAFE_BACKGROUND=1
+    LWIP_PROVIDE_ERRNO=1
 )
 
 # ============================================================
@@ -65,10 +57,10 @@ target_compile_definitions(pico_inference_project PRIVATE
 # ============================================================
 target_link_libraries(pico_inference_project
     pico_stdlib
-    pico_stdio_usb
-    hardware_uart
-    pico-tflmicro
-    pico_cyw43_arch_lwip_threadsafe_background  # Wi-Fi + lwIP para UDP rápido
+    pico_lwip
+    pico_lwip_arch
+    pico_cyw43_arch_lwip_threadsafe_background
+    pico_rand # Add this to link pico_rand library
 )
 
 # ============================================================
