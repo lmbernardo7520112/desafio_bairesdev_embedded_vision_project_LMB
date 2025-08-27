@@ -5,6 +5,7 @@
 #include "pico/async_context.h"
 #include "lwip/udp.h"
 #include "lwip/pbuf.h"
+#include "lwip/ip4_addr.h"  // Adicionado para ip4addr_ntoa
 #include "inference.h"
 
 // Defina a senha correta para a rede "moto" aqui
@@ -63,6 +64,11 @@ bool connect_to_wifi(const char *ssid, const char *password, uint auth_mode) {
         strncpy(connected_ssid, ssid, 32);
         connected_ssid[32] = '\0';
         connected = true;
+
+        // Adicionado: Imprimir o IP obtido
+        const ip_addr_t *ip = &cyw43_state.netif[CYW43_ITF_STA].ip_addr;
+        printf("Endereço IP obtido: %s\n", ip4addr_ntoa(ip));
+
         return true;
     } else {
         printf("Falha na conexão à rede %s: erro %d\n", ssid, err);
