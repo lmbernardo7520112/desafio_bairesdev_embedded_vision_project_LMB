@@ -80,7 +80,8 @@ green "✅ CMake concluído com sucesso."
 
 # --- Compilando ---
 blue "⚙️ Compilando projeto..."
-make -j$(nproc)
+# make VERBOSE=1 -j$(nproc)
+make -j2 2>&1 | tee build.log
 if [ $? -ne 0 ]; then
     red "❌ Erro na compilação. Abortando."
     exit 1

@@ -1,13 +1,18 @@
 #include <stdio.h>
 #include <string.h>
-// #include <stdlib.h>
 #include "pico/stdlib.h"
-#include "pico/async_context.h"
 #include "pico/cyw43_arch.h"
+#include "pico/async_context.h"
+#include "lwip/udp.h"
+#include "lwip/pbuf.h"
 #include "inference.h"
 
 // Defina a senha correta para a rede "moto" aqui
 #define WIFI_PASSWORD "password"
+#define UDP_PORT 5005
+#define MAX_IMAGE_SIZE (48 * 48 * 1) // kNumRows * kNumCols * kNumChannels
+#define CHUNK_PAYLOAD_MAX 1000
+#define ACK_TIMEOUT_MS 2000
 
 // Estrutura para armazenar informações de redes com SSID "moto"
 typedef struct {
@@ -22,79 +27,50 @@ typedef struct {
 #define MAX_MOTO_NETWORKS 10
 wifi_network_t moto_networks[MAX_MOTO_NETWORKS];
 int moto_network_count = 0;
-bool connected = false; // Flag para verificar se está conectado
-static char connected_ssid[33] = ""; // Armazena o SSID conectado
+bool connected = false;
+static char connected_ssid[33] = "";
 
-// Função para mapear auth_mode para constantes do SDK
+// Buffer para armazenar a imagem recebida
+static uint8_t image_buffer[MAX_IMAGE_SIZE];
+static size_t image_buffer_len = 0;
+static uint16_t expected_total_chunks = 0;
+static uint16_t received_chunks = 0;
+
+// Função para mapear auth_mode
 static uint32_t get_auth_mode(uint auth_mode) {
     printf("Mapping auth_mode: %u\n", auth_mode);
     switch (auth_mode) {
-        case 0: // Aberto
-            printf("Auth mode mapped to CYW43_AUTH_OPEN (0)\n");
-            return CYW43_AUTH_OPEN;
-        case 1: // WPA-PSK
-            printf("Auth mode mapped to CYW43_AUTH_WPA_TKIP_PSK (1)\n");
-            return CYW43_AUTH_WPA_TKIP_PSK;
-        case 2: // WPA2-PSK
-            printf("Auth mode mapped to CYW43_AUTH_WPA2_AES_PSK (3)\n");
-            return CYW43_AUTH_WPA2_AES_PSK;
-        case 5: // WPA3-SAE or WPA2-PSK fallback
+        case 0: return CYW43_AUTH_OPEN;
+        case 1: return CYW43_AUTH_WPA_TKIP_PSK;
+        case 2: return CYW43_AUTH_WPA2_AES_PSK;
+        case 5:
             #ifdef CYW43_AUTH_WPA3_SAE
-                printf("Auth mode mapped to CYW43_AUTH_WPA3_SAE\n");
                 return CYW43_AUTH_WPA3_SAE;
             #else
-                printf("Auth mode mapped to CYW43_AUTH_WPA2_AES_PSK (3) as fallback\n");
                 return CYW43_AUTH_WPA2_AES_PSK;
             #endif
-        default:
-            printf("Unknown auth mode %u, defaulting to CYW43_AUTH_WPA2_AES_PSK (3)\n", auth_mode);
-            return CYW43_AUTH_WPA2_AES_PSK;
+        default: return CYW43_AUTH_WPA2_AES_PSK;
     }
 }
 
-// Função para verificar o status da conexão
-bool check_connection_status(void) {
-    int status = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
-    if (status >= 0) {
-        printf("Conexão mantida à rede %s (status: %d)\n", connected_ssid, status);
-        return true;
-    } else {
-        printf("Conexão perdida (status: %d)\n", status);
-        connected = false; // Marca como desconectado para tentar reconectar
-        return false;
-    }
-}
-
-// Função para tentar conectar à rede Wi-Fi
+// Função para conectar à rede Wi-Fi
 bool connect_to_wifi(const char *ssid, const char *password, uint auth_mode) {
     printf("\nTentando conectar à rede %s com auth_mode %u...\n", ssid, auth_mode);
     uint32_t sdk_auth_mode = get_auth_mode(auth_mode);
-    if (sdk_auth_mode > 0xFFFF) { // Workaround para auth mode inválido
-        printf("Invalid auth mode %u, forcing CYW43_AUTH_WPA2_AES_PSK (3)\n", sdk_auth_mode);
-        sdk_auth_mode = CYW43_AUTH_WPA2_AES_PSK;
-    }
-    printf("SDK auth mode: %u\n", sdk_auth_mode);
-    printf("CYW43 state before connect: %08x\n", cyw43_state.netif[CYW43_ITF_STA].state);
     int err = cyw43_arch_wifi_connect_timeout_ms(ssid, password, sdk_auth_mode, 10000);
     if (err == 0) {
         printf("Conexão bem-sucedida à rede %s!\n", ssid);
         strncpy(connected_ssid, ssid, 32);
         connected_ssid[32] = '\0';
         connected = true;
-        printf("CYW43 state after connect: %08x\n", cyw43_state.netif[CYW43_ITF_STA].state);
         return true;
     } else {
         printf("Falha na conexão à rede %s: erro %d\n", ssid, err);
-        printf("SSID (len=%u) bytes:", (unsigned)strlen(ssid));
-        for (size_t i = 0; i < strlen(ssid); i++) printf(" %02X", (unsigned char)ssid[i]);
-        printf("\nPASS (len=%u) bytes:", (unsigned)strlen(password));
-        for (size_t i = 0; i < strlen(password); i++) printf(" %02X", (unsigned char)password[i]);
-        printf("\nCYW43 state after fail: %08x\n", cyw43_state.netif[CYW43_ITF_STA].state);
         return false;
     }
 }
 
-// Função para determinar o melhor protocolo e conectar
+// Função para selecionar a melhor rede
 void select_best_protocol(void) {
     if (moto_network_count == 0) {
         printf("Nenhuma rede com SSID contendo 'moto' encontrada.\n");
@@ -102,60 +78,21 @@ void select_best_protocol(void) {
     }
 
     int best_index = 0;
-    int best_rssi = -1000; // Valor inicial baixo para comparação
-    int best_auth_score = 0; // Pontuação para o modo de autenticação
+    int best_rssi = -1000;
+    int best_auth_score = 0;
 
     for (int i = 0; i < moto_network_count; i++) {
-        int auth_score = 0;
-        switch (moto_networks[i].auth_mode) {
-            case 0: // Aberto
-                auth_score = 1; // Menor prioridade
-                break;
-            case 5: // WPA3-SAE
-                auth_score = 5; // Melhor segurança
-                break;
-            default: // WPA-PSK, WPA2-PSK, ou outros
-                auth_score = 4; // Boa segurança
-                break;
-        }
-
-        // Comparar com base no auth_score e RSSI
-        if (auth_score > best_auth_score || 
-            (auth_score == best_auth_score && moto_networks[i].rssi > best_rssi)) {
+        int auth_score = (moto_networks[i].auth_mode == 0) ? 1 : (moto_networks[i].auth_mode == 5) ? 5 : 4;
+        if (auth_score > best_auth_score || (auth_score == best_auth_score && moto_networks[i].rssi > best_rssi)) {
             best_index = i;
             best_auth_score = auth_score;
             best_rssi = moto_networks[i].rssi;
         }
     }
 
-    // Exibir detalhes da melhor rede
-    printf("\nMelhor rede com 'moto' encontrada:\n");
-    printf("SSID: %s\n", moto_networks[best_index].ssid);
-    printf("RSSI: %d dBm\n", moto_networks[best_index].rssi);
-    printf("Canal: %d\n", moto_networks[best_index].channel);
-    printf("MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
-           moto_networks[best_index].bssid[0], moto_networks[best_index].bssid[1],
-           moto_networks[best_index].bssid[2], moto_networks[best_index].bssid[3],
-           moto_networks[best_index].bssid[4], moto_networks[best_index].bssid[5]);
-    
-    // Determinar e exibir o protocolo recomendado
-    switch (moto_networks[best_index].auth_mode) {
-        case 0:
-            printf("Protocolo recomendado: Nenhum (rede aberta, menos segura)\n");
-            break;
-        case 5:
-            #ifdef CYW43_AUTH_WPA3_SAE
-                printf("Protocolo recomendado: WPA3-SAE (máxima segurança)\n");
-            #else
-                printf("Protocolo recomendado: WPA2-PSK (usado como fallback, WPA3 não suportado)\n");
-            #endif
-            break;
-        default:
-            printf("Protocolo recomendado: WPA2-PSK (seguro e compatível)\n");
-            break;
-    }
+    printf("\nMelhor rede com 'moto' encontrada: %s (RSSI: %d dBm, Canal: %d)\n",
+           moto_networks[best_index].ssid, moto_networks[best_index].rssi, moto_networks[best_index].channel);
 
-    // Tentar conectar à melhor rede, se ainda não estiver conectado
     if (!connected) {
         connected = connect_to_wifi(moto_networks[best_index].ssid, WIFI_PASSWORD, moto_networks[best_index].auth_mode);
     }
@@ -163,45 +100,22 @@ void select_best_protocol(void) {
 
 // Callback de resultados do scan Wi-Fi
 static int scan_result(void *env, const cyw43_ev_scan_result_t *result) {
-    if (result) {
-        // Verifica se o SSID contém "moto" (case-insensitive)
-        char ssid_lower[33];
-        strncpy(ssid_lower, (const char*)result->ssid, 32);
-        ssid_lower[32] = '\0';
-        for (int i = 0; ssid_lower[i]; i++) {
-            if (ssid_lower[i] >= 'A' && ssid_lower[i] <= 'Z') {
-                ssid_lower[i] += 32; // Converte para minúscula
-            }
-        }
-        
-        if (strstr(ssid_lower, "moto") != NULL && moto_network_count < MAX_MOTO_NETWORKS) {
-            // Armazena informações da rede
-            strncpy(moto_networks[moto_network_count].ssid, (const char*)result->ssid, 32);
-            moto_networks[moto_network_count].ssid[32] = '\0';
-            moto_networks[moto_network_count].rssi = result->rssi;
-            moto_networks[moto_network_count].channel = result->channel;
-            for (int i = 0; i < 6; i++) {
-                moto_networks[moto_network_count].bssid[i] = result->bssid[i];
-            }
-            moto_networks[moto_network_count].auth_mode = result->auth_mode;
-            moto_network_count++;
-            
-            printf("Rede com 'moto' encontrada: %s\n", result->ssid);
-        }
-        
-        // Imprime todos os resultados do scan
-        printf("ssid: %-32s rssi: %4d chan: %3d mac: %02x:%02x:%02x:%02x:%02x:%02x sec: %u\n",
-               result->ssid, result->rssi, result->channel,
-               result->bssid[0], result->bssid[1], result->bssid[2],
-               result->bssid[3], result->bssid[4], result->bssid[5],
-               result->auth_mode);
+    if (result && strstr((const char*)result->ssid, "moto") && moto_network_count < MAX_MOTO_NETWORKS) {
+        strncpy(moto_networks[moto_network_count].ssid, (const char*)result->ssid, 32);
+        moto_networks[moto_network_count].ssid[32] = '\0';
+        moto_networks[moto_network_count].rssi = result->rssi;
+        moto_networks[moto_network_count].channel = result->channel;
+        memcpy(moto_networks[moto_network_count].bssid, result->bssid, 6);
+        moto_networks[moto_network_count].auth_mode = result->auth_mode;
+        moto_network_count++;
+        printf("Rede com 'moto' encontrada: %s\n", result->ssid);
     }
     return 0;
 }
 
-// Worker que dispara o scan
+// Worker para scan Wi-Fi
 static void scan_worker_fn(async_context_t *context, async_at_time_worker_t *worker) {
-    cyw43_wifi_scan_options_t scan_options = {0}; // scan passivo padrão
+    cyw43_wifi_scan_options_t scan_options = {0};
     int err = cyw43_wifi_scan(&cyw43_state, &scan_options, NULL, scan_result);
     if (err == 0) {
         bool *scan_started = (bool *)worker->user_data;
@@ -212,61 +126,133 @@ static void scan_worker_fn(async_context_t *context, async_at_time_worker_t *wor
     }
 }
 
+// Callback para recepção de pacotes UDP
+static void udp_receive_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port) {
+    if (!p) return;
+
+    // Processar pacote (cabeçalho: idx(2 bytes) + total(2 bytes))
+    if (p->len < 4) {
+        printf("[UDP] Pacote muito pequeno: %d bytes\n", p->len);
+        pbuf_free(p);
+        return;
+    }
+
+    uint8_t *data = (uint8_t *)p->payload;
+    // Deserializar idx e total_chunks (big-endian, 2 bytes cada)
+    uint16_t idx = (data[0] << 8) | data[1];
+    uint16_t total_chunks = (data[2] << 8) | data[3];
+
+    if (received_chunks == 0) {
+        expected_total_chunks = total_chunks;
+        image_buffer_len = 0;
+        printf("[UDP] Iniciando nova transferência: %u chunks esperados\n", total_chunks);
+    }
+
+    if (idx >= expected_total_chunks) {
+        printf("[UDP] Índice inválido: %u >= %u\n", idx, expected_total_chunks);
+        pbuf_free(p);
+        return;
+    }
+
+    // Copiar payload para o buffer
+    size_t payload_len = p->len - 4;
+    size_t offset = idx * CHUNK_PAYLOAD_MAX;
+    if (offset + payload_len <= MAX_IMAGE_SIZE) {
+        memcpy(image_buffer + offset, data + 4, payload_len);
+        image_buffer_len = offset + payload_len > image_buffer_len ? offset + payload_len : image_buffer_len;
+        received_chunks++;
+        printf("[UDP] Recebido chunk %u/%u (%u bytes)\n", idx + 1, total_chunks, payload_len);
+    } else {
+        printf("[UDP] Buffer overflow: offset=%u, payload_len=%u\n", offset, payload_len);
+        pbuf_free(p);
+        return;
+    }
+
+    // Enviar ACK
+    struct pbuf *ack = pbuf_alloc(PBUF_TRANSPORT, 5, PBUF_RAM);
+    if (ack) {
+        memcpy(ack->payload, "ACK", 3);
+        // Serializar idx (big-endian, 2 bytes)
+        ((uint8_t *)ack->payload)[3] = (idx >> 8) & 0xFF;
+        ((uint8_t *)ack->payload)[4] = idx & 0xFF;
+        udp_sendto(pcb, ack, addr, port);
+        pbuf_free(ack);
+        printf("[UDP] Enviado ACK para chunk %u\n", idx);
+    }
+
+    // Verificar se todos os chunks foram recebidos
+    if (received_chunks == expected_total_chunks) {
+        printf("[UDP] Imagem completa recebida: %u bytes\n", image_buffer_len);
+        run_inference_from_buffer(image_buffer, image_buffer_len, 48, 48); // Ajuste dimensões
+        received_chunks = 0;
+        expected_total_chunks = 0;
+
+        // Enviar TRANSFER_DONE
+        struct pbuf *done = pbuf_alloc(PBUF_TRANSPORT, strlen("TRANSFER_DONE"), PBUF_RAM);
+        if (done) {
+            memcpy(done->payload, "TRANSFER_DONE", strlen("TRANSFER_DONE"));
+            udp_sendto(pcb, done, addr, port);
+            pbuf_free(done);
+            printf("[UDP] Enviado TRANSFER_DONE\n");
+        }
+    }
+
+    pbuf_free(p);
+}
+
 int main(void) {
     stdio_init_all();
-    
-    printf("Inicializando CYW43...\n");
     if (cyw43_arch_init()) {
         printf("failed to initialise\n");
         return 1;
     }
-    
-    printf("CYW43 initial state: %08x\n", cyw43_state.netif[CYW43_ITF_STA].state);
+
     cyw43_arch_enable_sta_mode();
-    printf("Press 'q' to quit\n");
-    
+
     bool scan_started = false;
     async_at_time_worker_t scan_worker = {
         .do_work = scan_worker_fn,
         .user_data = &scan_started
     };
-    
-    // dispara imediatamente o primeiro scan
-    hard_assert(async_context_add_at_time_worker_in_ms(
-        cyw43_arch_async_context(), &scan_worker, 0));
-    
-    bool exit = false;
-    uint32_t last_check = 0; // Última verificação de status
-    while (!exit) {
-        int key = getchar_timeout_us(0);
-        if (key == 'q' || key == 'Q') {
-            exit = true;
-        }
-        
-        // Se conectado, verifica o status da conexão a cada 5 segundos
+    async_context_add_at_time_worker_in_ms(cyw43_arch_async_context(), &scan_worker, 0);
+
+    // Configurar UDP
+    struct udp_pcb *udp = udp_new();
+    if (!udp) {
+        printf("Falha ao criar PCB UDP\n");
+        cyw43_arch_deinit();
+        return 1;
+    }
+    if (udp_bind(udp, IP_ADDR_ANY, UDP_PORT) != ERR_OK) {
+        printf("Falha ao bindar UDP no porto %d\n", UDP_PORT);
+        udp_remove(udp);
+        cyw43_arch_deinit();
+        return 1;
+    }
+    udp_recv(udp, udp_receive_callback, NULL);
+    printf("[UDP] Aguardando pacotes na porta %d\n", UDP_PORT);
+
+    uint32_t last_check = 0;
+    while (true) {
         if (connected) {
             uint32_t now = to_ms_since_boot(get_absolute_time());
             if (now - last_check >= 5000) {
-                check_connection_status();
+                int status = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
+                connected = (status >= 0);
+                printf("Status da conexão: %s (status: %d)\n", connected ? "Conectado" : "Desconectado", status);
                 last_check = now;
             }
-        }
-        // Se não conectado e terminou um scan, agenda o próximo em 10 s
-        else if (!cyw43_wifi_scan_active(&cyw43_state) && scan_started) {
+        } else if (!cyw43_wifi_scan_active(&cyw43_state) && scan_started) {
             scan_started = false;
-            select_best_protocol(); // Seleciona, exibe e tenta conectar
-            hard_assert(async_context_add_at_time_worker_in_ms(
-                cyw43_arch_async_context(), &scan_worker, 10000));
+            select_best_protocol();
+            async_context_add_at_time_worker_in_ms(cyw43_arch_async_context(), &scan_worker, 10000);
         }
-        
-        #if PICO_CYW43_ARCH_POLL
-            cyw43_arch_poll();
-            cyw43_arch_wait_for_work_until(at_the_end_of_time);
-        #else
-            sleep_ms(1000);
-        #endif
+
+        cyw43_arch_poll();
+        sleep_ms(10);
     }
-    
+
+    udp_remove(udp);
     cyw43_arch_deinit();
     return 0;
 }
