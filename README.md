@@ -7,7 +7,7 @@
 
 ## 📄 Descrição do Projeto
 
-Este projeto realiza inferência de imagens em tempo real utilizando um microcontrolador **Raspberry Pi Pico (RP2040)** com modelo embarcado do **TensorFlow Lite for Microcontrollers (TFLM)**, otimizado com **CMSIS-NN**. O modelo classifica expressões faciais a partir de imagens 48×48 processadas previamente no host (Raspberry Pi 3).
+Este projeto realiza inferência de imagens em tempo real utilizando um microcontrolador **Raspberry Pi Pico (RP2040)** com modelo embarcado do **TensorFlow Lite for Microcontrollers (TFLM)**. O modelo classifica expressões faciais a partir de imagens 48×48 processadas previamente no host (Raspberry Pi 3).
 
 > 📸 A captura é feita por **câmera USB** conectada ao Raspberry Pi 3 (não à Pico).  
 > 📤 A imagem é processada no Pi 3 e enviada via **Wi-Fi** à Pico. 
