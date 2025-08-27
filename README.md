@@ -10,8 +10,8 @@
 Este projeto realiza inferência de imagens em tempo real utilizando um microcontrolador **Raspberry Pi Pico (RP2040)** com modelo embarcado do **TensorFlow Lite for Microcontrollers (TFLM)**, otimizado com **CMSIS-NN**. O modelo classifica expressões faciais a partir de imagens 48×48 processadas previamente no host (Raspberry Pi 3).
 
 > 📸 A captura é feita por **câmera USB** conectada ao Raspberry Pi 3 (não à Pico).  
-> 📤 A imagem é processada no Pi 3 e enviada via **UART** à Pico.  
-> 📊 O resultado da inferência é visualizado via **monitor serial (PuTTY)**.
+> 📤 A imagem é processada no Pi 3 e enviada via **Wi-Fi** à Pico. 
+> 📊 O resultado da inferência é visualizado via **monitor serial (Minicom)**.
 
 ---
 
@@ -20,12 +20,12 @@ Este projeto realiza inferência de imagens em tempo real utilizando um microcon
 ```text
 [Câmera USB] ─┬─> [Raspberry Pi 3 (host)]
               │       └─> Captura + Redimensionamento + Normalização
-              │       └─> Envio via UART
+              │       └─> Envio via Wi-Fi
               ↓
         [Raspberry Pi Pico (RP2040)]
               └─> Recebe dados normalizados
               └─> Executa inferência com TFLM
-              └─> Exibe resultado no monitor serial (ex: PuTTY)
+              └─> Exibe resultado no monitor serial (Minicom)
 ```
 
 > 💬 A exibição em display OLED SSD1306 **ainda não foi implementada**, embora a biblioteca esteja pronta no projeto.
@@ -36,16 +36,14 @@ Este projeto realiza inferência de imagens em tempo real utilizando um microcon
 
 - **Hardware**
   - Raspberry Pi Pico (RP2040, Cortex-M0+)
-  - Raspberry Pi 3 (Host USB/UART)
+  - Raspberry Pi 3 (Host USB/Wi-Fi)
   - Câmera USB
   - OLED SSD1306 (planejado)
-  - ESP32 (modo analisador lógico, opcional)
 - **Software**
-  - TensorFlow Lite Micro + CMSIS-NN
+  - TensorFlow Lite Micro
   - C++17 com Pico SDK
   - `gcc-arm-none-eabi` toolchain
   - PuTTY / Minicom (monitor serial)
-  - sigrok/PulseView (para análise de sinais UART)
 
 ---
 
@@ -74,33 +72,21 @@ pico_inference_project/
 ## 🔎 Estado Atual
 
 - ✅ Código da Pico compila corretamente com suporte completo ao TFLM.
-- ✅ Comunicação UART configurada com `uart0`, `baudrate 115200`, RX/TX definidos.
+- ✅ Conexão Wi-Fi configurada com cyw43_arch, escaneia redes "moto" e conecta.
 - ✅ Recepção dos dados de imagem 48×48 do Pi 3 via serial.
 - ✅ Inferência executa sem falhas com `MicroInterpreter`.
-- ✅ Logs da inferência são exibidos via **monitor serial (PuTTY)**.
-- ⚠️ **UART apresenta ruído ou dados corrompidos** — em depuração.
+- ✅ Logs da inferência são exibidos via monitor serial (Minicom).
 - ⏳ A exibição em OLED ainda será implementada.
 
 ---
 
 ## 🧪 Próximas Etapas
 
-- [ ] Resolver problema de integridade dos dados UART (desalinhamento, sincronização)
-- [ ] Adicionar parsing robusto do buffer UART (start/stop delimiters ou checksum)
-- [ ] Medir latência real por frame
+- [ ] Refatorar modelo para reduzir latência (pruning, quantização adicional).
 - [ ] Ligar e testar exibição com display OLED SSD1306
-- [ ] Dividir UART/Inferência entre os dois cores do RP2040 (multi-core)
-- [ ] Avaliar podas/extensões de modelo (CNN separável, pruning)
-
----
-
-## 🧰 Debug com ESP32 como Analisador Lógico
-
-Para diagnóstico mais preciso da UART (ruído, start bits, tempos), o ESP32 foi configurado como **analisador lógico compatível com protocolo SUMP**, com o firmware `logic_analyzer-pico.ino`.
-
-- Sinais RX e TX são capturados diretamente do Pi 3 ou da Pico.
-- Visualização no **PulseView** com clock de amostragem personalizado.
-
+- [ ] Melhorar precisão com ajustes na CNN (camadas separáveis).
+- [ ] Otimizar tamanho do modelo para menor uso de memória.
+      
 ---
 
 ## 📎 Complementos
