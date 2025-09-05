@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <limits.h>
-
 #include "tensorflow/lite/micro/tflite_bridge/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
@@ -41,7 +40,7 @@ void initialize_interpreter() {
     }
 
     // Resolver com as ops necessárias
-    static tflite::MicroMutableOpResolver<9> resolver;
+    static tflite::MicroMutableOpResolver<11> resolver;
     resolver.AddConv2D();
     resolver.AddMaxPool2D();
     resolver.AddFullyConnected();
@@ -51,6 +50,8 @@ void initialize_interpreter() {
     resolver.AddQuantize();
     resolver.AddDequantize();
     resolver.AddDepthwiseConv2D();
+    resolver.AddMul(); // Add MUL operation
+    resolver.AddAdd();
     printf("[INFERENCE] Operations resolver configured\n");
 
     static tflite::MicroAllocator *allocator = tflite::MicroAllocator::Create(tensor_arena, kTensorArenaSize);
